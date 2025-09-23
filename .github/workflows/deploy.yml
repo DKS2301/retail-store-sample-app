@@ -102,16 +102,7 @@ jobs:
           ECR_REPO="${AWS_ACCOUNT_ID}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/retail-store-${SERVICE}"
           
           echo "🔨 Building ${SERVICE}:${TAG}"
-          
-          # Create ECR repo if it doesn't exist (safe, no deletion)
-          if ! aws ecr describe-repositories --repository-names "retail-store-${SERVICE}" >/dev/null 2>&1; then
-            echo "📦 Repository does not exist - creating retail-store-${SERVICE}"
-            aws ecr create-repository --repository-name "retail-store-${SERVICE}" \
-              --image-scanning-configuration scanOnPush=true \
-              --encryption-configuration encryptionType=AES256
-          else
-            echo "✅ Repository retail-store-${SERVICE} exists - skipping creation"
-          fi
+          echo "📦 Target repository: ${ECR_REPO}"
           
           # Build and push Docker images
           docker build -t "${ECR_REPO}:${TAG}" -t "${ECR_REPO}:latest" "src/${SERVICE}/"
