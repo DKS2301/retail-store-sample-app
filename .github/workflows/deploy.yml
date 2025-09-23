@@ -70,10 +70,48 @@ jobs:
           echo "📊 Services to build: ${CHANGED_SERVICES[*]}"
           echo "📊 Generated matrix: {\"service\":$MATRIX_JSON}"
 
+  # NEW: Create ECR repositories job (runs once before parallel builds)
+  setup-ecr:
+    name: Setup ECR Repositories
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.has-changes == 'true'
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Create ECR repositories for changed services
+        run: |
+          SERVICES=(${{ needs.detect-changes.outputs.changed-services }})
+          
+          for service in "${SERVICES[@]}"; do
+            REPO_NAME="retail-store-${service}"
+            echo "🔍 Checking repository: ${REPO_NAME}"
+            
+            # Try to describe the repository
+            if aws ecr describe-repositories --repository-names "${REPO_NAME}" >/dev/null 2>&1; then
+              echo "✅ Repository ${REPO_NAME} already exists"
+            else
+              echo "📦 Creating repository: ${REPO_NAME}"
+              if aws ecr create-repository \
+                --repository-name "${REPO_NAME}" \
+                --image-scanning-configuration scanOnPush=true \
+                --encryption-configuration encryptionType=AES256 >/dev/null 2>&1; then
+                echo "✅ Successfully created ${REPO_NAME}"
+              else
+                echo "⚠️ Repository ${REPO_NAME} might already exist (race condition), continuing..."
+              fi
+            fi
+          done
+
   deploy:
     name: Deploy ${{ matrix.service }}
     runs-on: ubuntu-latest
-    needs: detect-changes
+    needs: [detect-changes, setup-ecr]  # Added setup-ecr dependency
     if: needs.detect-changes.outputs.has-changes == 'true'
     permissions:
       contents: write
@@ -104,6 +142,15 @@ jobs:
           echo "🔨 Building ${SERVICE}:${TAG}"
           echo "📦 Target repository: ${ECR_REPO}"
           
+          # Verify repository exists (optional check)
+          if aws ecr describe-repositories --repository-names "retail-store-${SERVICE}" >/dev/null 2>&1; then
+            echo "✅ Repository retail-store-${SERVICE} exists"
+          else
+            echo "❌ Repository retail-store-${SERVICE} does not exist!"
+            echo "Please create it manually or ensure the setup-ecr job ran successfully"
+            exit 1
+          fi
+          
           # Build and push Docker images
           docker build -t "${ECR_REPO}:${TAG}" -t "${ECR_REPO}:latest" "src/${SERVICE}/"
           docker push "${ECR_REPO}:${TAG}"
@@ -111,7 +158,6 @@ jobs:
           
           echo "✅ Pushed ${ECR_REPO}:${TAG}"
           echo "ECR_REPO=${ECR_REPO}" >> $GITHUB_ENV
-
 
       - name: Update Helm values for ${{ matrix.service }}
         run: |
