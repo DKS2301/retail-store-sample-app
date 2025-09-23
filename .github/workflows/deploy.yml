@@ -103,19 +103,24 @@ jobs:
           
           echo "🔨 Building ${SERVICE}:${TAG}"
           
-          # Create ECR repo if it doesn't exist
-          aws ecr describe-repositories --repository-names "retail-store-${SERVICE}" 2>/dev/null || \
-          aws ecr create-repository --repository-name "retail-store-${SERVICE}" \
-            --image-scanning-configuration scanOnPush=true \
-            --encryption-configuration encryptionType=AES256
+          # Create ECR repo if it doesn't exist (safe, no deletion)
+          if ! aws ecr describe-repositories --repository-names "retail-store-${SERVICE}" >/dev/null 2>&1; then
+            echo "📦 Repository does not exist - creating retail-store-${SERVICE}"
+            aws ecr create-repository --repository-name "retail-store-${SERVICE}" \
+              --image-scanning-configuration scanOnPush=true \
+              --encryption-configuration encryptionType=AES256
+          else
+            echo "✅ Repository retail-store-${SERVICE} exists - skipping creation"
+          fi
           
-          # Build and push
+          # Build and push Docker images
           docker build -t "${ECR_REPO}:${TAG}" -t "${ECR_REPO}:latest" "src/${SERVICE}/"
           docker push "${ECR_REPO}:${TAG}"
           docker push "${ECR_REPO}:latest"
           
           echo "✅ Pushed ${ECR_REPO}:${TAG}"
           echo "ECR_REPO=${ECR_REPO}" >> $GITHUB_ENV
+
 
       - name: Update Helm values for ${{ matrix.service }}
         run: |
