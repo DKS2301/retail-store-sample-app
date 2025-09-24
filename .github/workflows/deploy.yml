@@ -140,18 +140,8 @@ jobs:
           ECR_REPO="${AWS_ACCOUNT_ID}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/retail-store-${SERVICE}"
           
           echo "🔨 Building ${SERVICE}:${TAG}"
-          echo "📦 Target repository: ${ECR_REPO}"
           
-          # Verify repository exists (optional check)
-          if aws ecr describe-repositories --repository-names "retail-store-${SERVICE}" >/dev/null 2>&1; then
-            echo "✅ Repository retail-store-${SERVICE} exists"
-          else
-            echo "❌ Repository retail-store-${SERVICE} does not exist!"
-            echo "Please create it manually or ensure the setup-ecr job ran successfully"
-            exit 1
-          fi
-          
-          # Build and push Docker images
+          # Just build and push (repos already exist)
           docker build -t "${ECR_REPO}:${TAG}" -t "${ECR_REPO}:latest" "src/${SERVICE}/"
           docker push "${ECR_REPO}:${TAG}"
           docker push "${ECR_REPO}:latest"
